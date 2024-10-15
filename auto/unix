@@ -434,6 +434,30 @@ ngx_feature_test="struct in_pktinfo  pkt;
                   setsockopt(0, IPPROTO_IP, IP_PKTINFO, NULL, 0)"
 . auto/feature
 
+# Linux UDP segmentation offloading
+
+ngx_feature="UDP_SEGMENT"
+ngx_feature_name="NGX_HAVE_UDP_SEGMENT"
+ngx_feature_run=no
+ngx_feature_incs="#include <sys/socket.h>
+                  /* Can use <netinet/udp.h> only with newer glibc */
+                  #include <linux/udp.h>"
+ngx_feature_path=
+ngx_feature_libs=
+ngx_feature_test="setsockopt(0, /* SOL_UDP */ 17, UDP_SEGMENT, NULL, 0)"
+. auto/feature
+
+# Linux time based packet transmission
+
+ngx_feature="SO_TXTIME"
+ngx_feature_name="NGX_HAVE_SO_TXTIME"
+ngx_feature_run=no
+ngx_feature_incs="#include <sys/socket.h>
+                  #include <linux/net_tstamp.h>"
+ngx_feature_path=
+ngx_feature_libs=
+ngx_feature_test="setsockopt(0, SOL_SOCKET, SO_TXTIME, NULL, 0)"
+. auto/feature
 
 # RFC 3542 way to get IPv6 datagram destination address
 
@@ -445,6 +469,28 @@ ngx_feature_incs="#include <sys/socket.h>
 ngx_feature_path=
 ngx_feature_libs=
 ngx_feature_test="setsockopt(0, IPPROTO_IPV6, IPV6_RECVPKTINFO, NULL, 0)"
+. auto/feature
+
+
+ngx_feature="IP_MTU_DISCOVER"
+ngx_feature_name="NGX_HAVE_IP_MTU_DISCOVER"
+ngx_feature_run=no
+ngx_feature_incs="#include <sys/socket.h>
+                  #include <netinet/in.h>"
+ngx_feature_path=
+ngx_feature_libs=
+ngx_feature_test="setsockopt(0, IPPROTO_IP, IP_MTU_DISCOVER, NULL, 0)"
+. auto/feature
+
+
+ngx_feature="IPV6_MTU_DISCOVER"
+ngx_feature_name="NGX_HAVE_IPV6_MTU_DISCOVER"
+ngx_feature_run=no
+ngx_feature_incs="#include <sys/socket.h>
+                  #include <netinet/in.h>"
+ngx_feature_path=
+ngx_feature_libs=
+ngx_feature_test="setsockopt(0, IPPROTO_IPV6, IPV6_MTU_DISCOVER, NULL, 0)"
 . auto/feature
 
 

@@ -101,11 +101,7 @@ struct ngx_event_s {
      *   accept:     1 if accept many, 0 otherwise
      */
 
-#if (NGX_HAVE_KQUEUE) || (NGX_HAVE_IOCP)
     int              available;
-#else
-    unsigned         available:1;
-#endif
 
     ngx_event_handler_pt  handler;
 

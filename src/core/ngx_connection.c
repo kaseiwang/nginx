@@ -1011,6 +1011,72 @@ ngx_configure_listening_sockets(ngx_cycle_t *cycle)
         }
 
 #endif
+
+#if (NGX_QUIC)
+
+#if (NGX_HAVE_SO_TXTIME)
+
+        /* Set SO_TXTIME socket option for pacing the QUIC outgoing
+         * packets using FQ qdisc. */
+        if (ls[i].quic) {
+            struct sock_txtime sk_txtime;
+
+            sk_txtime.clockid = CLOCK_MONOTONIC;
+            sk_txtime.flags = 0;
+
+            if (setsockopt(ls[i].fd, SOL_SOCKET, SO_TXTIME, &sk_txtime,
+                           sizeof(sk_txtime)) == -1 )
+            {
+                ngx_log_error(NGX_LOG_EMERG, cycle->log, ngx_socket_errno,
+                              "setsockopt(SO_TXTIME) "
+                              "for %V failed, ignored.",
+                              &ls[i].addr_text);
+            } else {
+                ls[i].quic_so_txtime = 1;
+            }
+        }
+
+#endif
+
+#if (NGX_HAVE_IP_MTU_DISCOVER)
+
+        /* Disable path MTU discovery and enable DF flag for QUIC. */
+        if (ls[i].quic && ls[i].sockaddr->sa_family == AF_INET) {
+            int pmtud = IP_PMTUDISC_PROBE;
+
+            if (setsockopt(ls[i].fd, IPPROTO_IP, IP_MTU_DISCOVER, &pmtud,
+                           sizeof(pmtud)) == -1 )
+
+            {
+                ngx_log_error(NGX_LOG_EMERG, cycle->log, ngx_socket_errno,
+                              "setsockopt(IP_MTU_DISCOVER) "
+                              "for %V failed, ignored.",
+                              &ls[i].addr_text);
+            }
+        }
+
+#endif
+
+#if (NGX_HAVE_IPV6_MTU_DISCOVER)
+
+        /* Disable path MTU discovery and enable DF flag for QUIC. */
+        if (ls[i].quic && ls[i].sockaddr->sa_family == AF_INET6) {
+            int pmtud = IPV6_PMTUDISC_PROBE;
+
+            if (setsockopt(ls[i].fd, IPPROTO_IPV6, IPV6_MTU_DISCOVER, &pmtud,
+                           sizeof(pmtud)) == -1 )
+
+            {
+                ngx_log_error(NGX_LOG_EMERG, cycle->log, ngx_socket_errno,
+                              "setsockopt(IPV6_MTU_DISCOVER) "
+                              "for %V failed, ignored.",
+                              &ls[i].addr_text);
+            }
+        }
+
+#endif
+
+#endif
     }
 
     return;
@@ -1050,6 +1116,22 @@ ngx_close_listening_sockets(ngx_cycle_t *cycle)
 
                 } else {
                     ngx_del_event(c->read, NGX_READ_EVENT, NGX_CLOSE_EVENT);
+                }
+            }
+
+            if (c->write->active) {
+                if (ngx_event_flags & NGX_USE_EPOLL_EVENT) {
+
+                    /*
+                     * it seems that Linux-2.6.x OpenVZ sends events
+                     * for closed shared listening sockets unless
+                     * the events was explicitly deleted
+                     */
+
+                    ngx_del_event(c->write, NGX_WRITE_EVENT, 0);
+
+                } else {
+                    ngx_del_event(c->write, NGX_WRITE_EVENT, NGX_CLOSE_EVENT);
                 }
             }
 

@@ -312,6 +312,12 @@ ngx_http_do_read_client_request_body(ngx_http_request_t *r)
                             ngx_del_timer(c->read);
                         }
 
+#if (NGX_HTTP_V3)
+                        if (r->qstream) {
+                            return NGX_AGAIN;
+                        }
+#endif
+
                         if (ngx_handle_read_event(c->read, 0) != NGX_OK) {
                             return NGX_HTTP_INTERNAL_SERVER_ERROR;
                         }
@@ -403,6 +409,12 @@ ngx_http_do_read_client_request_body(ngx_http_request_t *r)
 
             clcf = ngx_http_get_module_loc_conf(r, ngx_http_core_module);
             ngx_add_timer(c->read, clcf->client_body_timeout);
+
+#if (NGX_HTTP_V3)
+            if (r->qstream) {
+                return NGX_AGAIN;
+            }
+#endif
 
             if (ngx_handle_read_event(c->read, 0) != NGX_OK) {
                 return NGX_HTTP_INTERNAL_SERVER_ERROR;
@@ -521,6 +533,17 @@ ngx_http_discard_request_body(ngx_http_request_t *r)
 #if (NGX_HTTP_V2)
     if (r->stream) {
         r->stream->skip_data = 1;
+        return NGX_OK;
+    }
+#endif
+
+#if (NGX_HTTP_V3)
+    if (r->qstream) {
+        r->qstream->skip_data = 1;
+
+        /* disable stream read to avoid pointless data events */
+        ngx_http_v3_stop_stream_read(r->qstream, 0);
+
         return NGX_OK;
     }
 #endif
@@ -809,6 +832,9 @@ ngx_http_test_expect(ngx_http_request_t *r)
 #if (NGX_HTTP_V2)
         || r->stream != NULL
 #endif
+#if (NGX_HTTP_V3)
+        || r->qstream != NULL
+#endif
        )
     {
         return NGX_OK;
@@ -848,6 +874,13 @@ ngx_http_test_expect(ngx_http_request_t *r)
 static ngx_int_t
 ngx_http_request_body_filter(ngx_http_request_t *r, ngx_chain_t *in)
 {
+
+#if (NGX_HTTP_V3)
+    if (r->qstream) {
+        return ngx_http_v3_request_body_filter(r, in);
+    }
+#endif
+
     if (r->headers_in.chunked) {
         return ngx_http_request_body_chunked_filter(r, in);
 

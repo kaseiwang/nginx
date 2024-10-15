@@ -196,6 +196,9 @@ ngx_process_events_and_timers(ngx_cycle_t *cycle)
     ngx_uint_t  flags;
     ngx_msec_t  timer, delta;
 
+    ngx_queue_t     *q;
+    ngx_event_t     *ev;
+
     if (ngx_timer_resolution) {
         timer = NGX_TIMER_INFINITE;
         flags = 0;
@@ -213,6 +216,13 @@ ngx_process_events_and_timers(ngx_cycle_t *cycle)
         }
 
 #endif
+    }
+
+    if (!ngx_queue_empty(&ngx_posted_delayed_events)) {
+        ngx_log_debug0(NGX_LOG_DEBUG_EVENT, cycle->log, 0,
+                       "posted delayed event queue not empty"
+                       " making poll timeout 0");
+        timer = 0;
     }
 
     if (ngx_use_accept_mutex) {
@@ -252,11 +262,38 @@ ngx_process_events_and_timers(ngx_cycle_t *cycle)
         ngx_shmtx_unlock(&ngx_accept_mutex);
     }
 
-    if (delta) {
-        ngx_event_expire_timers();
-    }
+    ngx_event_expire_timers();
 
     ngx_event_process_posted(cycle, &ngx_posted_events);
+
+    while (!ngx_queue_empty(&ngx_posted_delayed_events)) {
+        q = ngx_queue_head(&ngx_posted_delayed_events);
+
+        ev = ngx_queue_data(q, ngx_event_t, queue);
+        if (ev->delayed) {
+            /* start of newly inserted nodes */
+            for (/* void */;
+                 q != ngx_queue_sentinel(&ngx_posted_delayed_events);
+                 q = ngx_queue_next(q))
+            {
+                ev = ngx_queue_data(q, ngx_event_t, queue);
+                ev->delayed = 0;
+
+                ngx_log_debug1(NGX_LOG_DEBUG_EVENT, cycle->log, 0,
+                               "skipping delayed posted event %p,"
+                               " till next iteration", ev);
+            }
+
+            break;
+        }
+
+        ngx_log_debug1(NGX_LOG_DEBUG_EVENT, cycle->log, 0,
+                       "delayed posted event %p", ev);
+
+        ngx_delete_posted_event(ev);
+
+        ev->handler(ev);
+    }
 }
 
 
@@ -640,6 +677,7 @@ ngx_event_process_init(ngx_cycle_t *cycle)
 
     ngx_queue_init(&ngx_posted_accept_events);
     ngx_queue_init(&ngx_posted_events);
+    ngx_queue_init(&ngx_posted_delayed_events);
 
     if (ngx_event_timer_init(cycle->log) == NGX_ERROR) {
         return NGX_ERROR;

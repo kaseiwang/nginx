@@ -104,6 +104,16 @@ typedef struct iocb  ngx_aiocb_t;
 #endif
 
 
+#if (NGX_HAVE_UDP_SEGMENT)
+#include <netinet/udp.h>
+#endif
+
+
+#if (NGX_HAVE_SO_TXTIME)
+#include <linux/net_tstamp.h>
+#endif
+
+
 #define NGX_LISTEN_BACKLOG        511
 
 

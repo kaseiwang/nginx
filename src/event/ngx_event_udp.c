@@ -9,6 +9,10 @@
 #include <ngx_core.h>
 #include <ngx_event.h>
 
+/*
+ * Max number of recvmsg() tried in ngx_event_recvmsg()
+ */
+#define NGX_RECVMSG_MAX        64
 
 #if !(NGX_WIN32)
 
@@ -70,8 +74,9 @@ ngx_event_recvmsg(ngx_event_t *ev)
 
     ecf = ngx_event_get_conf(ngx_cycle->conf_ctx, ngx_event_core_module);
 
+    /* For non-kqueue, ev->available is a packet counter */
     if (!(ngx_event_flags & NGX_USE_KQUEUE_EVENT)) {
-        ev->available = ecf->multi_accept;
+        ev->available = NGX_RECVMSG_MAX;
     }
 
     lc = ev->data;
@@ -276,6 +281,14 @@ ngx_event_recvmsg(ngx_event_t *ev)
         (void) ngx_atomic_fetch_add(ngx_stat_accepted, 1);
 #endif
 
+#if (NGX_QUIC)
+        if (ls->quic) {
+            if (ngx_quic_validate_initial(ev, buffer, n) != NGX_OK) {
+                goto next;
+            }
+        }
+#endif
+
         ngx_accept_disabled = ngx_cycle->connection_n / 8
                               - ngx_cycle->free_connection_n;
 
@@ -413,13 +426,37 @@ ngx_event_recvmsg(ngx_event_t *ev)
 
         ls->handler(c);
 
+        /* When multi_accept is off, exit the loop now */
+        if (!ecf->multi_accept) {
+            break;
+        }
+
     next:
 
         if (ngx_event_flags & NGX_USE_KQUEUE_EVENT) {
             ev->available -= n;
+        } else {
+            ev->available --;
         }
 
     } while (ev->available);
+
+    /* Reschedule recvmsg if there is more packets to read */
+    n = recvmsg(lc->fd, &msg, MSG_PEEK);
+
+    if (n == -1) {
+        err = ngx_socket_errno;
+
+        if (err != EAGAIN) {
+            ngx_log_error(NGX_LOG_ALERT, ev->log, err, "recvmsg() peek error");
+        }
+    } else {
+        ev->delayed = 1;
+        ngx_post_event(ev, &ngx_posted_delayed_events);
+
+        ngx_log_debug2(NGX_LOG_DEBUG_EVENT, ev->log, 0,
+                   "recvmsg on %V, reschedule: %d", &ls->addr_text, ev->available);
+    }
 }
 
 
